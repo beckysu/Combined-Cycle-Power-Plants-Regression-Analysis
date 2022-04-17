@@ -1,0 +1,167 @@
+---
+title: "PSTAT 126 FINAL PROJECT"
+author: "Helen Cui, Becky Su, Sarah Hermann"
+date: "3/14/2019"
+output:
+  github_document:
+    math_method:
+      engine: webtex
+      url: http://chart.apis.google.com/chart?cht=tx&chl=
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r extract data}
+library(readxl)
+library(car)
+data.ccpp<-read_excel("/Users/beckysu/Desktop/ccpp.xlsx")
+data(data.ccpp)
+attach(data.ccpp)
+
+a<-data.ccpp$AT
+b<-data.ccpp$V
+c<-data.ccpp$AP
+d<-data.ccpp$RH
+Y<-data.ccpp$PE
+```
+
+```{r plot}
+pairs(~Y+a+b+c+d)
+
+full.lm<-lm(Y~a+b+c+d)
+avPlots(full.lm, id=FALSE)
+```
+
+```{r Residual}
+Residualtest<-full.lm$residuals
+Fitted<-full.lm$fitted.values
+plot(Residualtest~Fitted, xlab = 'Fitted Values', ylab = 'Residuals', main = 'Residuals vs Fits Plot')
+abline(h = 0, lty = 2)
+```
+
+```{r Q-Q}
+e<-Residualtest
+qqnorm(e)
+qqline(e)
+```
+
+```{r Outliers fu}
+ccpp.lm <- lm(Y~a+b+c+d)
+s.resid <- rstudent(ccpp.lm)
+as=abs(s.resid)
+which(as==max(as))
+
+#test for outliers
+outlierTest(ccpp.lm)
+```
+
+```{r influential point fu}
+influenceIndexPlot(full.lm)
+```
+
+```{r}
+library(leaps)
+#Full model
+mod.0 <- lm(Y~1)
+mod.full= ~a + d + b + c
+
+mod.1 <- update(mod.0, mod.full)
+mod.backward <- step(mod.1, scope = c(lower = ~ 1, direction = 'backward'))
+```
+
+```{r powerTransform}
+Trans.ccpp<-powerTransform(cbind(a, b, c, d)~1)
+summary(Trans.ccpp)
+```
+
+From using power transform, the likelihood ratio tests indicate that using log transformations for all variables is not appropriate, neither should we use no transformations because both p-values ($2.22e^{-16}$) are less than the default alpha level of 0.05. By rounding the estimated lambda powers, 1.2705 to 1, -0.1366 to 0, -2.9843 to -3, and 1.6195 to 1, we decided to log transform the predictor b and not transform the predictor c because it would over complicate our model. 
+
+```{r BoxCox}
+ccpp.Trans <- with(data.ccpp, data.frame(Y, a, log(b), c, d))
+ccpp.lm<-lm(Y~., data = ccpp.Trans)
+boxCox(ccpp.lm)
+```
+
+By using box cox transformation, the lambda value is between -1 and -2 so we chose to use lambda=-2 since the confidence level is closer to -2 than -1. Thus our final transformed model with the interaction terms is $Y^{-2}$~a+log(b)+c+d. 
+
+```{r} 
+pairs(~I(Y^(-2))+a+log(b)+c+d)
+
+full.fit<-lm(Y^(-2) ~ a + log(b) + c+ d)
+avPlots(full.fit, id=FALSE)
+```
+```{r}
+library(leaps)
+#Full model
+mod.full= ~a +log(b) + c + d + a*b
+
+# Base model
+mod.0 <- lm(Y^(-2)~1)
+mod.1 <- update(mod.0, mod.full)
+mod.backward <- step(mod.1, scope = c(lower = ~ 1, direction = 'backward'))
+```
+
+By using backward selection, we found out that all predictors are important predictors. Thus, the final model is $Y^{-2}$ ~ a + log(b) + c + d + a*b.  
+
+```{r new residuals}
+Residual<-full.fit$residuals
+Fitted<-full.fit$fitted.values
+plot(Residual~Fitted, xlab = 'Fitted Values', ylab = 'Residuals', main = 'Residuals vs Fits Plot')
+abline(h = 0, lty = 2)
+```
+
+```{r new Q-Q}
+e<-Residual
+qqnorm(e)
+qqline(e)
+```
+
+```{r Outliers}
+ccpp.lm <- lm(Y^(-2)~a+log(b)+c+d+a*b)
+s.resid <- rstudent(ccpp.lm)
+as=abs(s.resid)
+which(as==max(as))
+
+#test for outliers
+outlierTest(ccpp.lm)
+```
+
+```{r influential point}
+full.fit<-lm(Y^(-2) ~ a + log(b) + c + d+a*b)
+influenceIndexPlot(full.fit)
+```
+
+```{r remove influential points}
+ccpp.lm<-lm((Y^(-2) ~ a + log(b) + c + d+a*b), subset=-c(3118,7665,3384,3896,7399,8718,8363,8188,1439,4219))
+```
+
+```{r}
+Residual<-ccpp.lm$residuals
+e<-Residual
+qqnorm(e)
+qqline(e)
+```
+
+```{r global F-test}
+#PROBLEM 3B:
+ccpp.full.lm<-lm(Y^(-2)~a+log(b)+c+d+a*b)
+summary(ccpp.full.lm)
+```
+
+The null hypothesis for the global F-test for this model using log(Life) as the response is:
+$H_0$: $\beta_1$=$\beta_2$=$\beta_3$=$\beta_4$=$\beta_{(12)}$=0 and the alternative hypothesis is
+$H_1$: at least one these predictors is not 0. Since the p-value is $2.2e^{-16}$ which is smaller than the default alpha level of 0.05, we reject the null hypothesis and conclude that at least one predictor is useful.
+
+```{r partial F-test}
+#PROBLEM 3D:
+ccpp.red.lm<-lm(Y^(-2) ~ a + log(b) + d +a*b)
+summary(ccpp.red.lm)
+```
+
+The null hypothesis for the partial F-test to test if ambient pressure is an useful predictor is:
+$H_0$: $\beta_3$=0 and the alternative hypothesis is
+$H_1$: $\beta_3$ is not 0. Since the p-value is $2.2e^{-16}$ which is smaller than the default alpha level of 0.05, we reject the null hypothesis and conclude that ambient pressure is an useful predictor. 
+
+Adjusted $R^2$: 93.21% of the variability of energy output is explained by the model.
